@@ -12,6 +12,7 @@ from langchain_openai import AzureOpenAIEmbeddings
 from langchain_community.vectorstores.azuresearch import AzureSearch
 from langchain_community.document_loaders import PyPDFLoader
 import tiktoken
+import time
 
 load_dotenv(override=True)
 
@@ -123,7 +124,10 @@ def index_pdf(file_location: str):
     input.entities = []
 
     for document in documents:
-        document.metadata['id'] = input.id
+        # For Azure Search each document needs a different id
+        # and each chunk too => do not set the id here or
+        # only 1 document will be indexed
+        document.metadata['document_id'] = input.id
         document.metadata['title'] = title
         document.metadata['source'] = url
         document.metadata['description'] = description
@@ -152,8 +156,18 @@ def index_pdf(file_location: str):
         azure_search_key=os.getenv("AZURE_SEARCH_ADMIN_KEY"),
         index_name=index_name,
         embedding_function=azure_openai_embeddings.embed_query,
+        additional_search_client_options={"retry_total": 20},
     )
-    vector_store.add_documents(documents=splits)
+    # Add documents by batch of 500 as there is a limit of 1000 documents per request
+    # and 16MB per request
+    num_splits = len(splits)
+    batch_size = 500
+    for i in range(0, num_splits, batch_size):
+        splits_batch = splits[i:i+batch_size]
+        print(
+            f"Adding batch {i} to {i+batch_size} of {num_splits} with {len(splits_batch)} documents")
+        vector_store.add_documents(documents=splits_batch)
+        time.sleep(30)
 
     input.content = '\n\n'.join([doc.page_content for doc in documents])
 
