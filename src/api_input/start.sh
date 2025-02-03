@@ -1,0 +1,1 @@
+fastapi run api_input.py --port 8081

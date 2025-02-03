@@ -11,6 +11,7 @@ import logging
 import uuid
 import datetime
 import os
+import time
 
 # Load the environment variables
 load_dotenv(override=True)
@@ -25,6 +26,7 @@ cosmosdb_connection_string = os.getenv("COSMOSDB_CONNECTION_STRING")
 azure_search_endpoint = os.getenv("AZURE_SEARCH_ENDPOINT")
 azure_search_admin_key = os.getenv("AZURE_SEARCH_ADMIN_KEY")
 
+
 class InputSubjectSpace(BaseModel):
     subject: str
 
@@ -34,7 +36,7 @@ class SubjectSpace(BaseModel):
     subject: str
     date: str
     last_updated: str
-    inputs: list
+    input_ids: list
     index_name: str
 
 
@@ -99,7 +101,7 @@ async def get_subject_inputs(subject_id: str):
     container = database.get_container_client("subjects")
 
     subject = container.read_item(item=subject_id, partition_key=subject_id)
-    inputs = get_inputs(subject.get('inputs'))
+    inputs = get_inputs(subject.get('input_ids'))
     return inputs
 
 
@@ -115,23 +117,23 @@ async def create_subject(inputSubjectSpace: InputSubjectSpace):
 
     now_string = datetime.datetime.now().isoformat()
 
-    inputs = retrieve(inputSubjectSpace.subject)
+    input_ids = retrieve(inputSubjectSpace.subject)
 
-    if len(inputs) == 0:
+    if len(input_ids) == 0:
         raise HTTPException(
             status_code=404, detail="No documents found for the subject")
 
     id = str(uuid.uuid4())
     index_name = id.replace('-', '')
 
-    create_index(index_name, inputs)
+    create_index(index_name, input_ids)
 
     subject = SubjectSpace(
         id=id,
         subject=inputSubjectSpace.subject,
         date=now_string,
         last_updated=now_string,
-        inputs=inputs,
+        input_ids=input_ids,
         index_name=index_name
     )
 
@@ -151,6 +153,8 @@ async def update_subject(subject_id: str, inputSubjectSpace: InputSubjectSpace):
     subject.subject = inputSubjectSpace.subject
     subject.last_updated = datetime.datetime.now().isoformat()
 
+    # TODO update the index
+
     container.upsert_item(body=subject)
     return subject
 
@@ -167,11 +171,12 @@ async def delete_subject(subject_id: str):
     return {"message": "Subject deleted"}
 
 
-def get_inputs(ids):
+def get_inputs(input_ids):
     """Get all inputs for a subject in the subject space.
     """
-    id_list = ', '.join([f'\"{id}\"' for id in ids])
-    query = f"SELECT * FROM c WHERE c.id IN ({id_list})"
+    input_id_list = ', '.join(
+        [f'\"{input_ids}\"' for input_ids in input_ids])
+    query = f"SELECT * FROM c WHERE c.id IN ({input_id_list})"
     client = CosmosClient.from_connection_string(cosmosdb_connection_string)
     database = client.get_database_client("autopodcaster")
     container = database.get_container_client("inputs")
@@ -198,7 +203,7 @@ def retrieve(subject: str):
     unique_ids = []
     for result in results:
         metadata = result[0].metadata
-        id = metadata['id']
+        id = str(metadata['input_id'])
         print(f"Title: {metadata['title']} - Score: {result[1]}")
         if id not in unique_ids:
             unique_ids.append(id)
@@ -213,7 +218,7 @@ def create_index(index_name, input_ids):
         document = Document(
             page_content=input['content'],
             metadata={
-                "id": input['id'],
+                "input_id": input['id'],
                 "title": input['title'],
                 "source": input['source'],
                 "description": input['description'],
@@ -234,4 +239,13 @@ def create_index(index_name, input_ids):
         index_name=index_name,
         embedding_function=azure_openai_embeddings.embed_query,
     )
-    vector_store.add_documents(documents=splits)
+    # Add documents by batch of 500 as there is a limit of 1000 documents per request
+    # and 16MB per request
+    num_splits = len(splits)
+    batch_size = 500
+    for i in range(0, num_splits, batch_size):
+        splits_batch = splits[i:i+batch_size]
+        print(
+            f"Adding batch {i} to {i+batch_size} of {num_splits} with {len(splits_batch)} documents")
+        vector_store.add_documents(documents=splits_batch)
+        time.sleep(30)

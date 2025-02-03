@@ -119,8 +119,7 @@ def process_podcast(subject_id: str) -> Output:
         "You are an assistant for question-answering tasks. "
         "Use the following pieces of retrieved context to answer "
         "the question. If you don't know the answer, say that you "
-        "don't know. Use three sentences maximum and keep the "
-        "answer concise."
+        "don't know."
         "\n\n"
         "{context}"
     )

@@ -70,7 +70,7 @@ AI_SEARCH_ENDPOINT=https://$AI_SEARCH_SERVICE_NAME.search.windows.net
 AI_SEARCH_ADMIN_KEY=$(az search admin-key show --service-name $AI_SEARCH_SERVICE_NAME --resource-group $RESOURCE_GROUP_NAME --query primaryKey --output tsv)
 
 # Add environment variables for Azure Speech
-echo "AZURE_SPEECH_KEY=${AZURE_SPEECH_KEY}" >> .env
+echo "AZURE_SPEECH_KEY=${AZURE_SPEECH_KEY}" > .env
 echo "AZURE_SPEECH_REGION=${AZURE_SPEECH_REGION}" >> .env
 
 # Add environment variables for OpenAI

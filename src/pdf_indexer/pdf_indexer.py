@@ -14,6 +14,8 @@ from langchain_community.document_loaders import PyPDFLoader
 import tiktoken
 import time
 
+from autopodcaster_model import Input
+
 load_dotenv(override=True)
 
 servicebus_connection_string = os.getenv("SERVICEBUS_CONNECTION_STRING")
@@ -22,37 +24,6 @@ status_endpoint = os.getenv("STATUS_ENDPOINT")
 blob_service_client = BlobServiceClient.from_connection_string(
     os.getenv("STORAGE_CONNECTION_STRING"))
 container_name = "uploads"
-
-
-class Input:
-    id: str
-    title: str
-    date: str
-    last_updated: str
-    author: str
-    description: str
-    source: str
-    type: str
-    thumbnail_url: str
-    topics: list
-    entities: list
-    content: str
-
-    def to_dict(self):
-        return {
-            "id": self.id,
-            "title": self.title,
-            "date": self.date,
-            "last_updated": self.last_updated,
-            "author": self.author,
-            "description": self.description,
-            "source": self.source,
-            "type": self.type,
-            "thumbnail_url": self.thumbnail_url,
-            "topics": self.topics,
-            "entities": self.entities,
-            "content": self.content
-        }
 
 
 async def main():
@@ -126,12 +97,13 @@ def index_pdf(file_location: str):
     for document in documents:
         # For Azure Search each document needs a different id
         # and each chunk too => do not set the id here or
-        # only 1 document will be indexed
-        document.metadata['document_id'] = input.id
+        # only 1 input or chunk of the input will be indexed
+        document.metadata['input_id'] = input.id
         document.metadata['title'] = title
         document.metadata['source'] = url
         document.metadata['description'] = description
         document.metadata['thumbnail_url'] = ''
+        # page metadata is added by PyPDFLoader
         document.metadata['type'] = 'pdf'
 
     text_splitter = RecursiveCharacterTextSplitter(
